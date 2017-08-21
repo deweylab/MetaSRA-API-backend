@@ -69,10 +69,11 @@ def lookup_attributes_and_samplename(sampleID, SRAconnection):
         if k == 'source_name':
             samplename = v
         else:
+            #attributes.append({'k':k, 'v':'v'})
             attributes.append((k,v))
 
+    #return sorted(attributes, key=lambda d: (d['k'], d['v'])), samplename
     return sorted(attributes), samplename
-
 
 
 
@@ -88,7 +89,7 @@ def lookup_ontology_terms(sampleID, metaSRAconnection):
         FROM mapped_ontology_terms WHERE
         sample_accession = ? ;
     """, (sampleID,))
-    return [s['term_id'] for s in terms]
+    return sorted([s['term_id'] for s in terms])
 
 
 
@@ -106,7 +107,7 @@ def lookup_sample_type(sampleID, metaSRAconnection):
     """, (sampleID,))
 
     r = [{'type': t['sample_type'], 'conf': t['confidence']} for t in sampletypes]
-    return r[0] if r else None
+    return r[0] if len(r) else None
 
 
 
@@ -182,6 +183,7 @@ def group_samples(outdb):
                 'type': '$type',
                 'name': '$name'
             }},
+            'title': {'$first': '$title'}
         }},
 
         # re-shape the document to have 'attr' and 'study' fields instead of
