@@ -200,6 +200,10 @@ def group_samples(outdb):
         {'$out': 'samplegroups'}
     ], allowDiskUse=True)
 
+    # add index for term queries
+    print('Creating terms index on samplegroups collection')
+    outdb['samples'].create_index('terms')
+
 
 
 
