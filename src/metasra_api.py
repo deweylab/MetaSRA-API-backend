@@ -40,13 +40,15 @@ def samples():
             'terms': {'$all': and_terms, '$nin': not_terms}
         }},
 
+        {'$project': {'_id': False}},
+
         {'$group': {
-            '_id' : '$study',
-            'title': {'$first': '$title'},
-            'studygroups': {'$push': '$$ROOT'}
+            '_id' : '$study.id',
+            'study': {'$first': '$study'},
+            'samplegroups': {'$push': '$$ROOT'}
         }},
 
-        # Hide 'id' field
+        # Drop '_id'
         {'$project': {'_id': False}},
 
         {'$facet':{

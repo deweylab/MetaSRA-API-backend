@@ -149,8 +149,10 @@ def build_samples(outdb):
             # need to be kept short to save space.
             document = {
                 'id': sample['sample_accession'],
-                'study': sample['study_accession'],
-                'title': sample['study_title'],
+                'study': {
+                    'id': sample['study_accession'],
+                    'title': sample['study_title']
+                },
                 'attr': attributes,
                 'terms': lookup_ontology_terms(sample['sample_accession'], metaSRAconnection),
                 'type': lookup_sample_type(sample['sample_accession'], metaSRAconnection)
@@ -175,25 +177,25 @@ def group_samples(outdb):
         {'$group': {
             '_id': {
                 'attr': '$attr',
-                'study': '$study',
-                'terms': '$terms'
+                'studyid': '$study.id',
+                'terms': '$terms',
             },
             'samples': {'$addToSet': {
                 'id': '$id',
                 'type': '$type',
                 'name': '$name'
             }},
-            'title': {'$first': '$title'}
+            'study': {'$first': '$study'}
         }},
 
         # re-shape the document to have 'attr' and 'study' fields instead of
         # tucking them in '_id'.
         {'$project': {
             'attr': '$_id.attr',
-            'study': '$_id.study',
             'terms': '$_id.terms',
             '_id': False, # suppress '_id' field
-            'samples': True # include 'samples'
+            'samples': True, # include 'samples',
+            'study': True
         }},
 
         # Send to a new collection called 'samplegroups'
@@ -210,6 +212,8 @@ def group_samples(outdb):
 
 
 if __name__ == '__main__':
-    outdb = new_output_db()
-    build_samples(outdb)
+    #outdb = new_output_db()
+    #build_samples(outdb)
+
+    outdb = MongoClient()['metaSRA']
     group_samples(outdb)
