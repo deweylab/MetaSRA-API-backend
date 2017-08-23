@@ -6,9 +6,13 @@ Builds mongodb database from SQLite files
 SRA_SUBSET_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra_website/SRAmetadb.subdb.17-06-22.sqlite'
 METASRA_PIPELINE_OUTPUT_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra.sqlite'
 
-
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 import sqlite3
+
+
+from onto_lib import load_ontology, ontology_graph
+ONT_NAME_TO_ONT_ID = {"EFO_CL_DOID_UBERON_CVCL":"17"}
+ONT_ID_TO_OG = {x:load_ontology.load(x)[0] for x in ONT_NAME_TO_ONT_ID.values()}
 
 
 
@@ -202,9 +206,37 @@ def group_samples(outdb):
         {'$out': 'samplegroups'}
     ], allowDiskUse=True)
 
-    # add index for term queries
-    print('Creating terms index on samplegroups collection')
-    outdb['samples'].create_index('terms')
+
+
+
+
+def elaborate_terms(outdb):
+    """
+    For each sample group, 1) find the set of terms to display by removing terms that have
+    children in the set, and 2) find a different set of terms to use for computing the
+    search queries by including ancestors of the terms in the set.
+    """
+
+    print('Looking up most-specific terms and ancestral terms')
+    for samplegroup in outdb['samplegroups'].find().sort('_id', ASCENDING):
+
+        # Terms to display
+        dterms = ontology_graph.most_specific_terms(samplegroup['terms'],
+            ONT_ID_TO_OG["17"],
+            sup_relations=["is_a", "part_of"])
+
+        # Ancestral terms
+        aterms = set(samplegroup['terms'])
+        for term in samplegroup['terms']:
+            aterms.update(ONT_ID_TO_OG["17"].recursive_relationship(term, ["is_a", "part_of"]))
+
+        outdb['samplegroups'].update_one(
+            {'_id': samplegroup['_id']},
+            {'$set':{
+                'dterms': list(dterms),
+                'aterms': list(aterms)
+            }}
+        )
 
 
 
@@ -216,4 +248,9 @@ if __name__ == '__main__':
     #build_samples(outdb)
 
     outdb = MongoClient()['metaSRA']
-    group_samples(outdb)
+    #group_samples(outdb)
+    elaborate_terms(outdb)
+
+    # add index for term queries
+    print('Creating ancestral terms index on samplegroups collection')
+    outdb['samples'].create_index('aterms')

@@ -1,2 +1,5 @@
 *.pyc
 .ENV/
+
+# This should be turned into a submodule once onto_lib is published somewhere
+build-db-script/onto_lib/
