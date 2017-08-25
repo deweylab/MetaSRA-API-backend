@@ -16,7 +16,7 @@ db = MongoClient()['metaSRA']
 # Prefix all API URL routes with this stem.  This should be handled by the web
 # server in deployment, but we need to do this for the local development server.
 DEBUG = app.config.get('DEBUG')
-urlstem = '' if DEBUG else '/api/v01'
+urlstem = '/api/v01' if DEBUG else ''
 
 
 @app.route(urlstem + '/samples')
