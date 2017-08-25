@@ -1,3 +1,10 @@
+
+# Path to the front-end repository in debug-mode/development.  (This isn't used in deployment.)
+import os.path
+debug_frontend_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', 'metasra-frontend')
+
+
+
 from bson import json_util
 from flask import Flask, request, Response
 app = Flask(__name__)
@@ -6,9 +13,13 @@ app = Flask(__name__)
 from pymongo import MongoClient
 db = MongoClient()['metaSRA']
 
+# Prefix all API URL routes with this stem.  This should be handled by the web
+# server in deployment, but we need to do this for the local development server.
+DEBUG = app.config.get('DEBUG')
+urlstem = '' if DEBUG else '/api/v01'
 
 
-@app.route('/samples')
+@app.route(urlstem + '/samples')
 def samples():
     and_terms = [t.strip().upper() for t in request.args.get('all', '').split(',') if not t=='']
     not_terms = [t.strip().upper() for t in request.args.get('none', '').split(',') if not t=='']
@@ -69,3 +80,34 @@ def samples():
 
 def jsonresponse(obj):
     return Response(json_util.dumps(obj), mimetype='application/json')
+
+
+
+
+if DEBUG:
+
+    # If we're in debug mode, start the typescript transpiler for the front-end.
+    # This will start the npm process twice, because flask loads this python module
+    # twice for the automatic-reloader.  This is stupid but looks harmless.
+    import subprocess
+    subprocess.Popen('npm run build:watch', cwd=debug_frontend_path, shell=True)
+
+
+    # Only on the local development server, serve static files from the /src
+    # and /node_modules directories of the front-end.
+    from flask import send_from_directory
+
+    @app.route('/node_modules/<path:filename>')
+    def node_modules(filename):
+        return send_from_directory(os.path.join(debug_frontend_path, 'node_modules'), filename)
+
+    @app.route('/<path:filename>')
+    def rootdir(filename):
+        print('foo')
+        return send_from_directory(os.path.join(debug_frontend_path, 'src'), filename)
+
+    # Catch-all URL path to serve the index page (for single-page application)
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def index(path):
+        return send_from_directory(os.path.join(debug_frontend_path, 'src'), "index.html")
