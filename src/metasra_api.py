@@ -21,8 +21,8 @@ urlstem = '/api/v01' if DEBUG else ''
 
 @app.route(urlstem + '/samples')
 def samples():
-    and_terms = [t.strip().upper() for t in request.args.get('all', '').split(',') if not t=='']
-    not_terms = [t.strip().upper() for t in request.args.get('none', '').split(',') if not t=='']
+    and_terms = [t.strip().upper() for t in request.args.get('and', '').split(',') if not t=='']
+    not_terms = [t.strip().upper() for t in request.args.get('not', '').split(',') if not t=='']
 
     # Return an error if we don't have and_terms, because we don't want to blow
     # up the server by returning the whole database.
@@ -72,7 +72,7 @@ def samples():
             ]
         }}
 
-    ])
+    ]).next()
 
     return jsonresponse(samples)
 
