@@ -42,7 +42,7 @@ def samples():
         limit = 10
 
 
-    samples = db['samplegroups'].aggregate([
+    result = db['samplegroups'].aggregate([
 
         # Use the index to find samples matching the terms-query.
         # This has to be the first aggregation stage to utilize the index.
@@ -63,7 +63,7 @@ def samples():
         {'$project': {'_id': False}},
 
         {'$facet':{
-            'count': [{'$count': 'studycount'}],
+            'studycount': [{'$count': 'studycount'}],
 
             'studies': [
                 {'$skip': skip},
@@ -74,7 +74,9 @@ def samples():
 
     ]).next()
 
-    return jsonresponse(samples)
+    result['studycount'] = result['studycount'][0]['studycount'] if result['studycount'] else 0
+
+    return jsonresponse(result)
 
 
 
