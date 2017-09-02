@@ -10,7 +10,7 @@ from pymongo import MongoClient, ASCENDING
 import sqlite3
 
 
-from onto_lib import load_ontology, ontology_graph
+from onto_lib import load_ontology, ontology_graph, general_ontology_tools
 ONT_NAME_TO_ONT_ID = {"EFO_CL_DOID_UBERON_CVCL":"17"}
 ONT_ID_TO_OG = {x:load_ontology.load(x)[0] for x in ONT_NAME_TO_ONT_ID.values()}
 
@@ -183,11 +183,11 @@ def group_samples(outdb):
                 'attr': '$attr',
                 'studyid': '$study.id',
                 'terms': '$terms',
+                'name':  '$name'
             },
             'samples': {'$addToSet': {
                 'id': '$id',
                 'type': '$type',
-                'name': '$name'
             }},
             'study': {'$first': '$study'}
         }},
@@ -199,7 +199,8 @@ def group_samples(outdb):
             'terms': '$_id.terms',
             '_id': False, # suppress '_id' field
             'samples': True, # include 'samples',
-            'study': True
+            'study': True,
+            'name': True
         }},
 
         # Send to a new collection called 'samplegroups'
@@ -221,9 +222,12 @@ def elaborate_terms(outdb):
     for samplegroup in outdb['samplegroups'].find().sort('_id', ASCENDING):
 
         # Terms to display
-        dterms = ontology_graph.most_specific_terms(samplegroup['terms'],
+        dterm_ids = ontology_graph.most_specific_terms(samplegroup['terms'],
             ONT_ID_TO_OG["17"],
             sup_relations=["is_a", "part_of"])
+
+        dterms = [[tid, general_ontology_tools.get_term_name(tid)] for tid in dterm_ids]
+
 
         # Ancestral terms
         aterms = set(samplegroup['terms'])
@@ -233,9 +237,11 @@ def elaborate_terms(outdb):
         outdb['samplegroups'].update_one(
             {'_id': samplegroup['_id']},
             {'$set':{
-                'dterms': list(dterms),
+                'dterms': list(sorted(dterms)),
                 'aterms': list(aterms)
-            }}
+                },
+            '$unset': {'terms': 1}
+            },
         )
 
 
@@ -244,11 +250,11 @@ def elaborate_terms(outdb):
 
 
 if __name__ == '__main__':
-    #outdb = new_output_db()
-    #build_samples(outdb)
+    outdb = new_output_db()
+    build_samples(outdb)
 
-    outdb = MongoClient()['metaSRA']
-    #group_samples(outdb)
+    #outdb = MongoClient()['metaSRA']
+    group_samples(outdb)
     elaborate_terms(outdb)
 
     # add index for term queries

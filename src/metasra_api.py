@@ -48,22 +48,22 @@ def samples():
         # This has to be the first aggregation stage to utilize the index.
         # TODO: add full-text matching here for the raw attribute text?
         {'$match': {
-            'terms': {'$all': and_terms, '$nin': not_terms}
+            'aterms': {'$all': and_terms, '$nin': not_terms}
         }},
 
-        {'$project': {'_id': False}},
+        {'$project': {'_id': False, 'aterms': False}},
 
         {'$group': {
             '_id' : '$study.id',
             'study': {'$first': '$study'},
-            'samplegroups': {'$push': '$$ROOT'}
+            'sampleGroups': {'$push': '$$ROOT'}
         }},
 
         # Drop '_id'
         {'$project': {'_id': False}},
 
         {'$facet':{
-            'studycount': [{'$count': 'studycount'}],
+            'studyCount': [{'$count': 'studyCount'}],
 
             'studies': [
                 {'$skip': skip},
@@ -74,7 +74,7 @@ def samples():
 
     ]).next()
 
-    result['studycount'] = result['studycount'][0]['studycount'] if result['studycount'] else 0
+    result['studyCount'] = result['studyCount'][0]['studyCount'] if result['studyCount'] else 0
 
     return jsonresponse(result)
 
