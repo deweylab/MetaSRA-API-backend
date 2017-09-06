@@ -118,7 +118,7 @@ def terms():
     id = request.args.get('id')
 
     if not (q or id):
-        return jsonresponse({'error' : 'Please enter some query terms'})
+        return jsonresponse({'error' : 'Please enter some query terms', 'terms':[]})
 
     query = {}
 
@@ -131,7 +131,7 @@ def terms():
 
     result = db['terms'].find(query).sort('score', ASCENDING)
 
-    return jsonresponse(result)
+    return jsonresponse({'terms': result})
 
 
 
