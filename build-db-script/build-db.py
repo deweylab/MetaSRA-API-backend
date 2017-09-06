@@ -6,8 +6,29 @@ Builds mongodb database from SQLite files
 SRA_SUBSET_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra_website/SRAmetadb.subdb.17-06-22.sqlite'
 METASRA_PIPELINE_OUTPUT_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra.sqlite'
 
+# Attributes to remove so they don't interfere when samples are grouped by like
+# attributes.  These should be sample-level ID's that don't contain meaningful
+# information.  (Sometimes tricky because different studies use these labels
+# differently.)
+ATTRIBUTE_GROUPING_BLACKLIST = set((
+    'gap_sample_id',
+    'gap_subject_id',
+    'submitted sample id',
+    'submitted subject id',
+    'sample id',
+    'sample_id',
+    'individual',
+    'c1 chip id',
+    'biospecimen repository sample id',
+    'replicate',
+    'section',
+    'mrna-seq reads',
+    'subject_id',
+))
+
 from pymongo import MongoClient, ASCENDING
 import sqlite3
+import re
 
 
 from onto_lib import load_ontology, ontology_graph, general_ontology_tools
@@ -72,7 +93,7 @@ def lookup_attributes_and_samplename(sampleID, SRAconnection):
     for (k,v) in cursor:
         if k == 'source_name':
             samplename = v
-        else:
+        elif k not in ATTRIBUTE_GROUPING_BLACKLIST:
             #attributes.append({'k':k, 'v':'v'})
             attributes.append((k,v))
 
@@ -182,12 +203,12 @@ def group_samples(outdb):
             '_id': {
                 'attr': '$attr',
                 'studyid': '$study.id',
-                'terms': '$terms',
-                'name':  '$name'
+                'terms': '$terms'
             },
             'samples': {'$addToSet': {
                 'id': '$id',
                 'type': '$type',
+                'name': '$name'
             }},
             'study': {'$first': '$study'}
         }},
@@ -199,8 +220,7 @@ def group_samples(outdb):
             'terms': '$_id.terms',
             '_id': False, # suppress '_id' field
             'samples': True, # include 'samples',
-            'study': True,
-            'name': True
+            'study': True
         }},
 
         # Send to a new collection called 'samplegroups'
@@ -211,7 +231,7 @@ def group_samples(outdb):
 
 
 
-def elaborate_terms(outdb):
+def elaborate_samplegroup_terms(outdb):
     """
     For each sample group, 1) find the set of terms to display by removing terms that have
     children in the set, and 2) find a different set of terms to use for computing the
@@ -247,16 +267,142 @@ def elaborate_terms(outdb):
 
 
 
+def get_distinct_terms(outdb):
+    """
+    Create a new collection 'terms' with one document for every distinct term
+    in the 'aterms' field of the 'samplegroups' collection.
+    """
+
+    print('Creating collection of distinct terms.')
+
+    outdb['samplegroups'].aggregate([
+
+        # This step is redundant but may possibly speed things up a bit by getting
+        # rid of extra fields before creating a bunch of new documents.
+        {'$project': {
+            'id': '$aterms',
+            '_id': False,
+        }},
+
+        # One document for each term in each samplegroup.
+        {'$unwind': {
+            'path': '$id'
+        }},
+
+        # Get distinct terms.
+        {'$group': {
+            '_id': '$id'
+        }},
+
+        # Rename _id to id.
+        {'$project': {
+            'id': '$_id',
+            '_id': False
+        }},
+
+        # Send to collection called 'terms'.
+        {'$out': 'terms'}
+    ], allowDiskUse=True)
+
+
+
+# Match by all non-word characters.  This should exclude things like _
+TOKEN_DELIMITER = re.compile('\W+')
+
+def get_tokens(text):
+    """
+    Split the given text into tokens for the autocomplete search.
+
+    THIS FUNCTION MUST BE EXACTLY THE SAME AS THE 'tokens' FUNCTION USED BY
+    THE API BACK_END.
+
+    TODO: put this somewhere where both scripts can import it.
+    """
+
+    tokens = set()
+
+    # 1) Add all tokens split by whitespace
+    tokens.update(text.lower().split())
+
+    # 2) Add all tokens split by non-word characters
+    tokens.update(re.split(TOKEN_DELIMITER, text.lower()))
+
+    return tokens
+
+
+
+def lookup_term_attributes(outdb):
+    """
+    For each term in the 'terms' collection, populate fields gleaned from ontolib.
+    """
+
+    print('Looking up term info from ontolib')
+    for term in outdb['terms'].find().sort('_id', ASCENDING):
+        term_id = term['id']
+
+        term_name = general_ontology_tools.get_term_name(term_id)
+        name_and_synonyms = general_ontology_tools.get_term_name_and_synonyms(term_id)
+
+
+        # get tokens for autocomplete
+        tokens = set()
+        for text in name_and_synonyms:
+            tokens.update(get_tokens(text))
+
+        up = sorted([[tid, general_ontology_tools.get_term_name(tid)] for tid
+            in general_ontology_tools.get_ancestors_within_radius(term_id, 2)],
+
+            # Sort by term text ascending
+            key=lambda t: t[1])
+
+        down = sorted([[tid, general_ontology_tools.get_term_name(tid)] for tid
+            in general_ontology_tools.get_descendents_within_radius(term_id, 2)],
+
+            # Sort by term text ascending
+            key=lambda t: t[1])
+
+
+        # Synonym string for display
+        synonyms = name_and_synonyms.copy()
+        synonyms.remove(term_name)
+        synonym_string = ', '.join(sorted(synonyms))
+
+
+        # Heuristic for sorting autocomplete results
+        score = len(term_name)
+
+
+        outdb['terms'].update_one(
+            {'_id': term['_id']},
+            {'$set':{
+                'name': term_name,
+                'syn': synonym_string,
+                'tokens': list(tokens),
+                'up': up,
+                'down': down,
+                'score': score
+                },
+            },
+        )
+
 
 
 if __name__ == '__main__':
-    outdb = new_output_db()
-    build_samples(outdb)
+    #outdb = new_output_db()
+    #build_samples(outdb)
 
-    #outdb = MongoClient()['metaSRA']
-    group_samples(outdb)
-    elaborate_terms(outdb)
+    #group_samples(outdb)
+    #elaborate_samplegroup_terms(outdb)
 
-    # add index for term queries
-    print('Creating ancestral terms index on samplegroups collection')
-    outdb['samples'].create_index('aterms')
+    # add terms index for sample queries
+    #print('Creating ancestral terms index on samplegroups collection')
+    #outdb['samples'].create_index('aterms')
+
+    outdb = MongoClient()['metaSRA']
+    get_distinct_terms(outdb)
+    lookup_term_attributes(outdb)
+
+    # Add token index for term autocomplete queries, and id index for lookup
+    print('Creating id and token indices on terms collection')
+    outdb['terms'].create_index('tokens')
+    outdb['terms'].create_index('id')
