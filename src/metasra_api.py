@@ -7,10 +7,11 @@ debug_frontend_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 
 
 from bson import json_util
 from flask import Flask, request, Response
+import re
 app = Flask(__name__)
 
 # Establish database connection
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 db = MongoClient()['metaSRA']
 
 # Prefix all API URL routes with this stem.  This should be handled by the web
@@ -80,7 +81,64 @@ def samples():
 
 
 
+
+
+
+# Match by all non-word characters.  This should exclude things like _
+TOKEN_DELIMITER = re.compile('\W+')
+
+def get_tokens(text):
+    """
+    Split the given text into tokens for the autocomplete search.
+
+    THIS FUNCTION MUST BE EXACTLY THE SAME AS THE 'tokens' FUNCTION USED BY
+    build-db.py.
+
+    TODO: put this somewhere where both scripts can import it.
+    """
+
+    tokens = set()
+
+    # 1) Add all tokens split by whitespace
+    tokens.update(text.lower().split())
+
+    # 2) Add all tokens split by non-word characters
+    tokens.update(re.split(TOKEN_DELIMITER, text.lower()))
+
+    return tokens
+
+
+
+
+
+
+@app.route(urlstem + '/terms')
+def terms():
+    q = request.args.get('q')
+    id = request.args.get('id')
+
+    if not (q or id):
+        return jsonresponse({'error' : 'Please enter some query terms'})
+
+    query = {}
+
+    if q:
+        tokens = get_tokens(q)
+        query['$and'] = [{'tokens': {'$regex': '^'+token}} for token in tokens]
+
+    if id:
+        query['id'] = id
+
+    result = db['terms'].find(query).sort('score', ASCENDING)
+
+    return jsonresponse(result)
+
+
+
+
+
 def jsonresponse(obj):
+    """Useing this instead of Flask's JSONify because of MongoDB BSON encoding"""
     return Response(json_util.dumps(obj), mimetype='application/json')
 
 
