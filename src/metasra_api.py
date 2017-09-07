@@ -127,7 +127,7 @@ def terms():
         query['$and'] = [{'tokens': {'$regex': '^'+token}} for token in tokens]
 
     if id:
-        query['id'] = id
+        query['id'] = {'$in': id.split(',')}
 
     result = db['terms'].find(query).sort('score', ASCENDING)
 
@@ -149,8 +149,13 @@ if DEBUG:
     # If we're in debug mode, start the typescript transpiler for the front-end.
     # This will start the npm process twice, because flask loads this python module
     # twice for the automatic-reloader.  This is stupid but looks harmless.
-    import subprocess
-    subprocess.Popen('npm run build:watch', cwd=debug_frontend_path, shell=True)
+
+    # Commented out because I'm using Atom's typescript plugin to do the
+    # compilation instead.  You might want to enable this again depending on
+    # your development setup.
+
+    #import subprocess
+    #subprocess.Popen('npm run build:watch', cwd=debug_frontend_path, shell=True)
 
 
     # Only on the local development server, serve static files from the /src
