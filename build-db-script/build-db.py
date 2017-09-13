@@ -332,6 +332,8 @@ def get_term_names(outdb):
     'terms' collection with one document for each term name.
     """
 
+    print("Getting distinct term names")
+
     # Look up term names for all ontology terms
     for term in outdb['termIDs'].find().sort('_id', ASCENDING):
         term_name = general_ontology_tools.get_term_name(term['id'])
@@ -508,17 +510,17 @@ def lookup_term_attributes(outdb):
 
 
 if __name__ == '__main__':
-    #outdb = new_output_db()
-    #build_samples(outdb)
+    outdb = new_output_db()
+    build_samples(outdb)
 
-    #group_samples(outdb)
-    #elaborate_samplegroup_terms(outdb)
+    group_samples(outdb)
+    elaborate_samplegroup_terms(outdb)
 
     # add terms index for sample queries
-    #print('Creating ancestral terms index on samplegroups collection')
-    #outdb['samples'].create_index('aterms')
+    print('Creating ancestral terms index on samplegroups collection')
+    outdb['samples'].create_index('aterms')
 
-    outdb = MongoClient()['metaSRA']
+    #outdb = MongoClient()['metaSRA']
     get_distinct_termIDs(outdb)
 
     get_term_names(outdb)
