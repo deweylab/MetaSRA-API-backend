@@ -26,6 +26,23 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     'subject_id',
 ))
 
+
+# When looking up ancestor terms and descendent terms to display in the autocomplete,
+# if there are fewer direct ancestors/descendents than this number at radius 1,
+# then include terms from radius 2.
+RELATED_TERM_EXPANSION_THRESHOLD = 5
+
+
+# We're grouping ontology terms by name.  If a term has ID's in multiple ontologies,
+# sort/prioritize them in this order.  For when we only want one term ID, eg for
+# term tag hilighting, choose the one with the highest precedence.
+ONTOLOGY_PRECEDENCE_ORDER = ['CVCL', 'DOID', 'CL', 'UBERON', 'EFO']
+def ontology_precedence(term_id):
+    return ONTOLOGY_PRECEDENCE_ORDER.index(term_id.split(':')[0])
+
+
+
+
 from pymongo import MongoClient, ASCENDING
 import sqlite3
 import re
@@ -267,7 +284,7 @@ def elaborate_samplegroup_terms(outdb):
 
 
 
-def get_distinct_terms(outdb):
+def get_distinct_termIDs(outdb):
     """
     Create a new collection 'terms' with one document for every distinct term
     in the 'aterms' field of the 'samplegroups' collection.
@@ -301,8 +318,46 @@ def get_distinct_terms(outdb):
         }},
 
         # Send to collection called 'terms'.
-        {'$out': 'terms'}
+        {'$out': 'termIDs'}
     ], allowDiskUse=True)
+
+
+
+
+
+
+def get_term_names(outdb):
+    """
+    Look up names for all terms in the 'termIDs' collection, and then create the
+    'terms' collection with one document for each term name.
+    """
+
+    # Look up term names for all ontology terms
+    for term in outdb['termIDs'].find().sort('_id', ASCENDING):
+        term_name = general_ontology_tools.get_term_name(term['id'])
+        outdb['termIDs'].update_one(
+            {'_id': term['_id']},
+            {'$set':{
+                'name': term_name,
+                },
+            },
+        )
+
+    # Create terms collection, with a list of term ID's for each distinct term name.
+    outdb['termIDs'].aggregate([
+        {'$group': {
+            '_id': '$name',
+            'ids': {'$push': '$id'}
+        }},
+        {'$project': {
+            '_id': False,
+            'name': '$_id',
+            'ids': True
+        }},
+        {'$out': 'terms'}
+    ])
+
+
 
 
 
@@ -331,6 +386,68 @@ def get_tokens(text):
 
 
 
+
+
+
+def distinct_terms_from_term_ids(term_ids):
+    """
+    Given an iterable of term ID's, look up names for each term and group the
+    terms by name.
+
+    Results look like this: {term_name: [term_id1, term_id2, ...]}
+    """
+
+    term_names = dict()
+    for term_id in term_ids:
+        term_name = general_ontology_tools.get_term_name(term_id)
+        if term_name in term_names:
+            term_names[term_name].append(term_id)
+        else:
+            term_names[term_name] = [term_id]
+
+    return term_names
+
+
+
+
+
+
+ANCESTORS, DESCENDENTS = 1, 2
+def lookup_related_terms(term_ids, direction):
+    """
+    Find ancestor or decendent terms for a list of term ID's, formatted to go in
+    the DB.
+    """
+
+    # Get the function to go either up or down the ontology
+    lookup_function = (general_ontology_tools.get_ancestors_within_radius if
+        direction == ANCESTORS else general_ontology_tools.get_descendents_within_radius)
+
+    # Look up terms at radius 1
+    related_term_ids = set()
+    for term_id in term_ids:
+        related_term_ids.update(lookup_function(term_id, 1))
+    related_term_names = distinct_terms_from_term_ids(related_term_ids)
+
+    # If we're below the threshold (not enough terms), look up terms from radius 2
+    if len(related_term_names) < RELATED_TERM_EXPANSION_THRESHOLD:
+        for term_id in term_ids:
+            related_term_ids.update(lookup_function(term_id, 2))
+        related_term_names = distinct_terms_from_term_ids(related_term_ids)
+
+    # Sort, and get into proper shape to go into the database
+    return sorted([{
+        'ids': sorted(term_ids, key=ontology_precedence),
+        'name': term_name
+    } for (term_name, term_ids) in related_term_names.items()],
+    key=lambda term: term['name'])
+
+
+
+
+
+
+
 def lookup_term_attributes(outdb):
     """
     For each term in the 'terms' collection, populate fields gleaned from ontolib.
@@ -338,52 +455,55 @@ def lookup_term_attributes(outdb):
 
     print('Looking up term info from ontolib')
     for term in outdb['terms'].find().sort('_id', ASCENDING):
-        term_id = term['id']
-
-        term_name = general_ontology_tools.get_term_name(term_id)
-        name_and_synonyms = general_ontology_tools.get_term_name_and_synonyms(term_id)
+        term_ids = term['ids']
+        term_name = term['name']
 
 
-        # get tokens for autocomplete
+        # Look up set of synonyms for all ID's for this term
+        name_and_synonyms = set()
+        for term_id in term_ids:
+            name_and_synonyms.update(general_ontology_tools.get_term_name_and_synonyms(term_id))
+
+        # Get tokens for finding autocomplete terms, from name and synonyms
         tokens = set()
         for text in name_and_synonyms:
             tokens.update(get_tokens(text))
 
-        up = sorted([[tid, general_ontology_tools.get_term_name(tid)] for tid
-            in general_ontology_tools.get_ancestors_within_radius(term_id, 2)],
+        # Keep a field with term-name tokens, so we can rank the term higher if it
+        # matches the term name instead of only the synonyms.
+        name_tokens = get_tokens(term_name)
 
-            # Sort by term text ascending
-            key=lambda t: t[1])
-
-        down = sorted([[tid, general_ontology_tools.get_term_name(tid)] for tid
-            in general_ontology_tools.get_descendents_within_radius(term_id, 2)],
-
-            # Sort by term text ascending
-            key=lambda t: t[1])
-
+        # Lookup ancestor and descendent terms to show in the autocomplete
+        ancestor_terms = lookup_related_terms(term_ids, ANCESTORS)
+        descendent_terms = lookup_related_terms(term_ids, DESCENDENTS)
 
         # Synonym string for display
         synonyms = name_and_synonyms.copy()
         synonyms.remove(term_name)
         synonym_string = ', '.join(sorted(synonyms))
 
-
         # Heuristic for sorting autocomplete results
         score = len(term_name)
 
+        # Put ID's in order of precedence
+        term_ids.sort(key=ontology_precedence)
 
         outdb['terms'].update_one(
             {'_id': term['_id']},
             {'$set':{
-                'name': term_name,
+                'ids': term_ids,
                 'syn': synonym_string,
                 'tokens': list(tokens),
-                'up': up,
-                'down': down,
+                'nametokens': list(name_tokens),
+                'ancestors': ancestor_terms,
+                'descendents': descendent_terms,
                 'score': score
                 },
             },
         )
+
+
+
 
 
 
@@ -399,10 +519,16 @@ if __name__ == '__main__':
     #outdb['samples'].create_index('aterms')
 
     outdb = MongoClient()['metaSRA']
-    get_distinct_terms(outdb)
+    get_distinct_termIDs(outdb)
+
+    get_term_names(outdb)
     lookup_term_attributes(outdb)
 
     # Add token index for term autocomplete queries, and id index for lookup
     print('Creating id and token indices on terms collection')
     outdb['terms'].create_index('tokens')
-    outdb['terms'].create_index('id')
+    outdb['terms'].create_index('ids')
+
+    print('Dropping intermediate, unused collections')
+    #outdb['samples'].drop()
+    outdb['termIDs'].drop()
