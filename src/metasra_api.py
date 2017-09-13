@@ -127,7 +127,7 @@ def terms():
         query['$and'] = [{'tokens': {'$regex': '^'+token}} for token in tokens]
 
     if id:
-        query['id'] = {'$in': id.split(',')}
+        query['ids'] = {'$in': id.split(',')}
 
     result = db['terms'].find(query).sort('score', ASCENDING)
 
