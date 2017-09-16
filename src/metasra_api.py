@@ -8,10 +8,11 @@ debug_frontend_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 
 from bson import json_util
 from flask import Flask, request, Response
 import re
+from collections import OrderedDict # this is only to specify the sort order for mongodb query
 app = Flask(__name__)
 
 # Establish database connection
-from pymongo import MongoClient, ASCENDING
+from pymongo import MongoClient, ASCENDING, DESCENDING
 db = MongoClient()['metaSRA']
 
 # Prefix all API URL routes with this stem.  This should be handled by the web
@@ -114,22 +115,92 @@ def get_tokens(text):
 
 @app.route(urlstem + '/terms')
 def terms():
+    """
+    Resource for looking up ontology terms.  Can take 2 parameters, 'q' for
+    text-searching (meant for the autocomplete function,) and 'id' which is a
+    comma-separated list of ontology ID's.  Returns records from the 'terms'
+    collection, which each actually represent distinct term names accross all
+    the included ontologies.
+
+    TODO: enforce a maximum number of terms.
+    """
+
+
     q = request.args.get('q')
     id = request.args.get('id')
 
+    # Punt if the user didn't enter any parameters.
     if not (q or id):
         return jsonresponse({'error' : 'Please enter some query terms', 'terms':[]})
 
+    # Building components to query against the terms collection in Mongo
     query = {}
+    sortpipeline = [{'$sort': {'score': ASCENDING}}]
+
+
 
     if q:
+
+        # Restrict terms to those having tokens prefixed by all of the
+        # user-entered tokens.
         tokens = get_tokens(q)
         query['$and'] = [{'tokens': {'$regex': '^'+token}} for token in tokens]
 
+        # This whole thing is to show first the terms that have the user's query
+        # in the name of the term instead of just the synonyms.
+        sortpipeline = [
+
+            # This pipeline stage adds a 'namematch' field counting the
+            # occurrences of the user's entered tokens in the term name
+            {'$addFields': {
+                'namematch' : {
+
+                    # Iterate over user-provided tokens
+                    '$sum' : [
+                        {'$size': {
+
+                            # Filter the list of term-name tokens to those matching the user-provided token
+                            '$filter': {
+                                'input': '$nametokens',
+                                'as': 'nametoken',
+                                'cond': {'$ne': [-1,
+
+                                    # Mongodb 3.4 doesn't support regular expressions in the project
+                                    # stage of the aggregation pipeline, so we have to use the synonym_string
+                                    # indexOf method.  The last 2 arguments restrict it to checking the beginning
+                                    # of the string only.
+                                    {'$indexOfBytes': ['$$nametoken', querytoken, 0, len(querytoken)]}
+                                ]}
+                            }
+                        }}
+                        for querytoken in tokens
+                    ]
+                }
+            }},
+
+            # Sort first by the number of times the user's tokens occur in the
+            # term name, then by score (term name length)
+            {'$sort': OrderedDict([
+                ('namematch', DESCENDING),
+                ('score', ASCENDING)
+            ])}
+
+        ]
+
+
+
+    # Filter by user-provided ID's
     if id:
         query['ids'] = {'$in': id.split(',')}
 
-    result = db['terms'].find(query).sort('score', ASCENDING)
+
+    result = db['terms'].aggregate(
+        [{'$match': query}]
+        + sortpipeline
+
+        # TODO: add a project stage to prune away some unneccesary fields?
+        # + project
+    )
 
     return jsonresponse({'terms': result})
 
