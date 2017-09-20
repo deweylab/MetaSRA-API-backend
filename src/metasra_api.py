@@ -129,6 +129,15 @@ def terms():
     q = request.args.get('q')
     id = request.args.get('id')
 
+    # Make sure limit is an integer
+    limit = request.args.get('limit')
+    if limit:
+        try:
+            limit = int(limit)
+        except:
+            return jsonresponse({'error': 'Limit argument must be an integer.', terms:[]})
+
+
     # Punt if the user didn't enter any parameters.
     if not (q or id):
         return jsonresponse({'error' : 'Please enter some query terms', 'terms':[]})
@@ -194,9 +203,18 @@ def terms():
         query['ids'] = {'$in': id.split(',')}
 
 
+
+    limitpipeline = []
+    if limit:
+        limitpipeline = [{'$limit': int(limit)}]
+
+
+
+
     result = db['terms'].aggregate(
         [{'$match': query}]
         + sortpipeline
+        + limitpipeline
 
         # TODO: add a project stage to prune away some unneccesary fields?
         # + project
