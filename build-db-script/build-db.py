@@ -33,9 +33,9 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
 
 
 # When looking up ancestor terms and descendent terms to display in the autocomplete,
-# if there are fewer direct ancestors/descendents than this number at radius 1,
-# then include terms from radius 2.
-RELATED_TERM_EXPANSION_THRESHOLD = 5
+# if there are more ancestors/descendents than this number at radius 2,
+# then only include terms from radius 1.
+RELATED_TERM_SHRINKAGE_THRESHOLD = 50
 
 
 # We're grouping ontology terms by name.  If a term has ID's in multiple ontologies,
@@ -456,11 +456,28 @@ def lookup_related_terms(term_ids, direction, outdb):
         related_term_names = distinct_terms_from_term_ids(related_term_ids)
     """
 
+    # Look up terms at radius 2
     related_term_ids = set()
     for term_id in term_ids:
         related_term_ids.update(lookup_function(term_id, 2))
+
+    # Exclude terms that don't match any samples in SRA
     filtered_term_ids = filter(lambda term: term_id_in_metasra(term, outdb), related_term_ids)
     related_term_names = distinct_terms_from_term_ids(filtered_term_ids)
+
+
+
+    # If we have too many terms at radius 2, repeat only including terms from radius 1
+    if len(related_term_names) > RELATED_TERM_SHRINKAGE_THRESHOLD:
+        related_term_ids = set()
+        for term_id in term_ids:
+            related_term_ids.update(lookup_function(term_id, 1))
+        # Exclude terms that don't match any samples in SRA
+        filtered_term_ids = filter(lambda term: term_id_in_metasra(term, outdb), related_term_ids)
+        related_term_names = distinct_terms_from_term_ids(filtered_term_ids)
+
+
+
 
     # Sort, and get into proper shape to go into the database
     return sorted([{
