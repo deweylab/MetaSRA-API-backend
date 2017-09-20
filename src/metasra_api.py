@@ -58,7 +58,8 @@ def samples():
         {'$group': {
             '_id' : '$study.id',
             'study': {'$first': '$study'},
-            'sampleGroups': {'$push': '$$ROOT'}
+            'sampleGroups': {'$push': '$$ROOT'},
+            'sampleCount': {'$sum': {'$size': '$samples'}}
         }},
 
         # Drop '_id'
@@ -66,7 +67,10 @@ def samples():
 
         {'$facet':{
             'studyCount': [{'$count': 'studyCount'}],
-
+            'sampleCount': [{'$group': {
+                                '_id': None,
+                                'sampleCount': {'$sum': '$sampleCount'}
+                                }}],
             'studies': [
                 {'$skip': skip},
                 {'$limit': limit}
@@ -77,6 +81,11 @@ def samples():
     ]).next()
 
     result['studyCount'] = result['studyCount'][0]['studyCount'] if result['studyCount'] else 0
+    result['sampleCount'] = result['sampleCount'][0]['sampleCount'] if result['sampleCount'] else 0
+
+    # Include these so the API user is not confused by implicit limit if they didn't provide one
+    result['limit'] = limit
+    result['skip'] = skip
 
     return jsonresponse(result)
 
