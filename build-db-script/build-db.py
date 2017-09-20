@@ -24,6 +24,11 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     'section',
     'mrna-seq reads',
     'subject_id',
+    'flowcell',
+    'brain_number',
+    'donor id',
+    'biological replicate',
+    # 'isolate', ?
 ))
 
 
@@ -412,10 +417,22 @@ def distinct_terms_from_term_ids(term_ids):
 
 
 
+def term_id_in_metasra(term_id, outdb):
+    """
+    Given a term ID, check to see if it has any matching samples in MetaSRA.
+    """
+
+    if outdb['samplegroups'].find_one({'aterms': term_id}):
+        return True
+    else:
+        return False
+
+
+
 
 
 ANCESTORS, DESCENDENTS = 1, 2
-def lookup_related_terms(term_ids, direction):
+def lookup_related_terms(term_ids, direction, outdb):
     """
     Find ancestor or decendent terms for a list of term ID's, formatted to go in
     the DB.
@@ -425,6 +442,7 @@ def lookup_related_terms(term_ids, direction):
     lookup_function = (general_ontology_tools.get_ancestors_within_radius if
         direction == ANCESTORS else general_ontology_tools.get_descendents_within_radius)
 
+    """
     # Look up terms at radius 1
     related_term_ids = set()
     for term_id in term_ids:
@@ -436,6 +454,13 @@ def lookup_related_terms(term_ids, direction):
         for term_id in term_ids:
             related_term_ids.update(lookup_function(term_id, 2))
         related_term_names = distinct_terms_from_term_ids(related_term_ids)
+    """
+
+    related_term_ids = set()
+    for term_id in term_ids:
+        related_term_ids.update(lookup_function(term_id, 2))
+    filtered_term_ids = filter(lambda term: term_id_in_metasra(term, outdb), related_term_ids)
+    related_term_names = distinct_terms_from_term_ids(filtered_term_ids)
 
     # Sort, and get into proper shape to go into the database
     return sorted([{
@@ -476,8 +501,8 @@ def lookup_term_attributes(outdb):
         name_tokens = get_tokens(term_name)
 
         # Lookup ancestor and descendent terms to show in the autocomplete
-        ancestor_terms = lookup_related_terms(term_ids, ANCESTORS)
-        descendent_terms = lookup_related_terms(term_ids, DESCENDENTS)
+        ancestor_terms = lookup_related_terms(term_ids, ANCESTORS, outdb)
+        descendent_terms = lookup_related_terms(term_ids, DESCENDENTS, outdb)
 
         # Synonym string for display
         synonyms = name_and_synonyms.copy()
@@ -510,17 +535,17 @@ def lookup_term_attributes(outdb):
 
 
 if __name__ == '__main__':
-    outdb = new_output_db()
-    build_samples(outdb)
+    #outdb = new_output_db()
+    #build_samples(outdb)
 
-    group_samples(outdb)
-    elaborate_samplegroup_terms(outdb)
+    #group_samples(outdb)
+    #elaborate_samplegroup_terms(outdb)
 
     # add terms index for sample queries
-    print('Creating ancestral terms index on samplegroups collection')
-    outdb['samples'].create_index('aterms')
+    #print('Creating ancestral terms index on samplegroups collection')
+    #outdb['samplegroups'].create_index('aterms')
 
-    #outdb = MongoClient()['metaSRA']
+    outdb = MongoClient()['metaSRA']
     get_distinct_termIDs(outdb)
 
     get_term_names(outdb)
