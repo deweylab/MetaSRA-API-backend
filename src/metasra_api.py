@@ -160,7 +160,7 @@ def terms():
     if q:
 
         # Restrict terms to those having tokens prefixed by all of the
-        # user-entered tokens.
+        # user-entered tokens.  Mongodb can use indexes for regex prefix queries.
         tokens = get_tokens(q)
         query['$and'] = [{'tokens': {'$regex': '^'+token}} for token in tokens]
 
@@ -173,23 +173,27 @@ def terms():
             {'$addFields': {
                 'namematch' : {
 
-                    # Iterate over user-provided tokens
+                    # Iterate over user-provided tokens, counting how many of them are
+                    # contained in the term's name tokens.
                     '$sum' : [
-                        {'$size': {
+                        {'$cond': {
+                            'if': { '$size':{
+                                # Filter the list of term-name tokens to those matching the user-provided token
+                                '$filter': {
+                                    'input': '$nametokens',
+                                    'as': 'nametoken',
+                                    'cond': {'$ne': [-1,
 
-                            # Filter the list of term-name tokens to those matching the user-provided token
-                            '$filter': {
-                                'input': '$nametokens',
-                                'as': 'nametoken',
-                                'cond': {'$ne': [-1,
-
-                                    # Mongodb 3.4 doesn't support regular expressions in the project
-                                    # stage of the aggregation pipeline, so we have to use the synonym_string
-                                    # indexOf method.  The last 2 arguments restrict it to checking the beginning
-                                    # of the string only.
-                                    {'$indexOfBytes': ['$$nametoken', querytoken, 0, len(querytoken)]}
-                                ]}
-                            }
+                                        # Mongodb 3.4 doesn't support regular expressions in the project
+                                        # stage of the aggregation pipeline, so we have to use the synonym_string
+                                        # indexOf method.  The last 2 arguments restrict it to checking the beginning
+                                        # of the string only.
+                                        {'$indexOfBytes': ['$$nametoken', querytoken, 0, len(querytoken)]}
+                                    ]}
+                                }
+                            }},
+                            'then': 1,
+                            'else': 0
                         }}
                         for querytoken in tokens
                     ]

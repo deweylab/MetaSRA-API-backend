@@ -29,6 +29,7 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     'donor id',
     'biological replicate',
     # 'isolate', ?
+    'experimental batch',
 ))
 
 
