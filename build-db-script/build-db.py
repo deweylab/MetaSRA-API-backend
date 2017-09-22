@@ -226,11 +226,11 @@ def group_samples(outdb):
             '_id': {
                 'attr': '$attr',
                 'studyid': '$study.id',
-                'terms': '$terms'
+                'terms': '$terms',
+                'type': '$type'
             },
             'samples': {'$addToSet': {
                 'id': '$id',
-                'type': '$type',
                 'name': '$name'
             }},
             'study': {'$first': '$study'}
@@ -243,7 +243,8 @@ def group_samples(outdb):
             'terms': '$_id.terms',
             '_id': False, # suppress '_id' field
             'samples': True, # include 'samples',
-            'study': True
+            'study': True,
+            'type': '$_id.type'
         }},
 
         # Send to a new collection called 'samplegroups'
@@ -556,24 +557,26 @@ if __name__ == '__main__':
     #outdb = new_output_db()
     #build_samples(outdb)
 
-    #group_samples(outdb)
-    #elaborate_samplegroup_terms(outdb)
-
-    # add terms index for sample queries
-    #print('Creating ancestral terms index on samplegroups collection')
-    #outdb['samplegroups'].create_index('aterms')
 
     outdb = MongoClient()['metaSRA']
-    get_distinct_termIDs(outdb)
 
-    get_term_names(outdb)
-    lookup_term_attributes(outdb)
+    group_samples(outdb)
+    elaborate_samplegroup_terms(outdb)
+
+    # add terms index for sample queries
+    print('Creating ancestral terms index on samplegroups collection')
+    outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
+
+    #get_distinct_termIDs(outdb)
+
+    #get_term_names(outdb)
+    #lookup_term_attributes(outdb)
 
     # Add token index for term autocomplete queries, and id index for lookup
-    print('Creating id and token indices on terms collection')
-    outdb['terms'].create_index('tokens')
-    outdb['terms'].create_index('ids')
+    #print('Creating id and token indices on terms collection')
+    #outdb['terms'].create_index('tokens')
+    #outdb['terms'].create_index('ids')
 
     print('Dropping intermediate, unused collections')
     #outdb['samples'].drop()
-    outdb['termIDs'].drop()
+    #outdb['termIDs'].drop()
