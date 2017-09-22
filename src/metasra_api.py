@@ -26,6 +26,8 @@ def samples():
     and_terms = [t.strip().upper() for t in request.args.get('and', '').split(',') if not t=='']
     not_terms = [t.strip().upper() for t in request.args.get('not', '').split(',') if not t=='']
 
+    sampletype = request.args.get('sampletype')
+
     # Return an error if we don't have and_terms, because we don't want to blow
     # up the server by returning the whole database.
     if len(and_terms) == 0:
@@ -44,14 +46,18 @@ def samples():
         limit = 10
 
 
+    # Match parameter to run against MongoDB
+    matchquery = {'aterms': {'$all': and_terms, '$nin': not_terms}}
+    if sampletype:
+        matchquery['type.type'] = re.sub(r'%20|\+', ' ', sampletype) # we want spaces instead of some other URL encodings
+
+
     result = db['samplegroups'].aggregate([
 
         # Use the index to find samples matching the terms-query.
         # This has to be the first aggregation stage to utilize the index.
         # TODO: add full-text matching here for the raw attribute text?
-        {'$match': {
-            'aterms': {'$all': and_terms, '$nin': not_terms}
-        }},
+        {'$match': matchquery},
 
         {'$project': {'_id': False, 'aterms': False}},
 
@@ -214,6 +220,8 @@ def terms():
     # Filter by user-provided ID's
     if id:
         query['ids'] = {'$in': id.split(',')}
+
+
 
 
 
