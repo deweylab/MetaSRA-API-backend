@@ -14,11 +14,11 @@ app = Flask(__name__)
 # Establish database connection
 from pymongo import MongoClient, ASCENDING, DESCENDING
 db = MongoClient()['metaSRA']
-
-# Prefix all API URL routes with this stem.  This should be handled by the web
-# server in deployment, but we need to do this for the local development server.
 DEBUG = app.config.get('DEBUG')
-urlstem = '/api/v01' if DEBUG else ''
+
+
+# Prefix all API URL routes with this stem.  
+urlstem = '/api/v01'
 
 
 @app.route(urlstem + '/samples')

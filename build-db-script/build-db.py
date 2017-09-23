@@ -30,6 +30,7 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     'biological replicate',
     # 'isolate', ?
     'experimental batch',
+    'md5_checksum',
 ))
 
 
