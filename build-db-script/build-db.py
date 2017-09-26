@@ -128,11 +128,9 @@ def lookup_attributes_and_samplename(sampleID, SRAconnection):
 
 def lookup_ontology_terms(sampleID, metaSRAconnection):
     """
-    So far, just returns a list of ontology term ID's for a given sample.
-    Eventually, I should amend this to look up the term text.
+    Returns a list of term ID's for a given sample from MetaSRA.
     """
 
-    # TODO: include ontolgy term text
     terms = metaSRAconnection.execute("""
         SELECT term_id
         FROM mapped_ontology_terms WHERE
@@ -271,7 +269,9 @@ def elaborate_samplegroup_terms(outdb):
             ONT_ID_TO_OG["17"],
             sup_relations=["is_a", "part_of"])
 
-        dterms = [[tid, general_ontology_tools.get_term_name(tid)] for tid in dterm_ids]
+        # Combine terms with the same term name
+        dterm_names = distinct_terms_from_term_ids(dterm_ids)
+        dterms = [{'name': name, 'ids': ids} for (name, ids) in dterm_names.items()]
 
 
         # Ancestral terms
@@ -282,7 +282,8 @@ def elaborate_samplegroup_terms(outdb):
         outdb['samplegroups'].update_one(
             {'_id': samplegroup['_id']},
             {'$set':{
-                'dterms': list(sorted(dterms)),
+                # Sort by term ID to visually group terms by same ontology
+                'dterms': list(sorted(dterms, key=lambda term: term['ids'][0])),
                 'aterms': list(aterms)
                 },
             '$unset': {'terms': 1}
@@ -561,7 +562,7 @@ if __name__ == '__main__':
 
     outdb = MongoClient()['metaSRA']
 
-    group_samples(outdb)
+    #group_samples(outdb)
     elaborate_samplegroup_terms(outdb)
 
     # add terms index for sample queries
