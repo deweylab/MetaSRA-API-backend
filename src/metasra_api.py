@@ -9,6 +9,9 @@ from bson import json_util
 from flask import Flask, request, Response
 import re
 from collections import OrderedDict # this is only to specify the sort order for mongodb query
+import csv
+from io import StringIO
+
 app = Flask(__name__)
 
 # Establish database connection
@@ -17,12 +20,20 @@ db = MongoClient()['metaSRA']
 DEBUG = app.config.get('DEBUG')
 
 
-# Prefix all API URL routes with this stem.  
+# Prefix all API URL routes with this stem.
 urlstem = '/api/v01'
 
 
-@app.route(urlstem + '/samples')
+
 def samples():
+    """
+    Get parameters from the request, and lookup matching samples in the database.
+
+    Return a python dict that looks like the JSON object to return.  (Functions
+    below handle the request/response, and converting to CSV.)
+    """
+
+
     and_terms = [t.strip().upper() for t in request.args.get('and', '').split(',') if not t=='']
     not_terms = [t.strip().upper() for t in request.args.get('not', '').split(',') if not t=='']
 
@@ -31,7 +42,7 @@ def samples():
     # Return an error if we don't have and_terms, because we don't want to blow
     # up the server by returning the whole database.
     if len(and_terms) == 0:
-        return jsonresponse({'error' : 'Please enter some query terms'})
+        return {'error' : 'Please enter some query terms'}
 
     # Get skip and limit arguments for paging, and make sure that they are
     # valid integers.
@@ -40,10 +51,11 @@ def samples():
     except ValueError:
         skip = 0
 
+    # -1 represents no limit
     try:
-        limit = int(request.args.get('limit', 10))
+        limit = int(request.args.get('limit', -1))
     except ValueError:
-        limit = 10
+        limit = -1
 
 
     # Match parameter to run against MongoDB
@@ -77,11 +89,9 @@ def samples():
                                 '_id': None,
                                 'sampleCount': {'$sum': '$sampleCount'}
                                 }}],
-            'studies': [
-                {'$skip': skip},
-                {'$limit': limit}
-                # TODO: join in ontology terms here?
-            ]
+            'studies':
+                [{'$skip': skip}]
+                + ([{'$limit': limit}] if limit > 0 else [])
         }}
 
     ]).next()
@@ -90,11 +100,58 @@ def samples():
     result['sampleCount'] = result['sampleCount'][0]['sampleCount'] if result['sampleCount'] else 0
 
     # Include these so the API user is not confused by implicit limit if they didn't provide one
-    result['limit'] = limit
+    if limit > 0:
+        result['limit'] = limit
     result['skip'] = skip
 
-    return jsonresponse(result)
+    return result
 
+
+
+
+
+@app.route(urlstem + '/samples')
+@app.route(urlstem + '/samples.json')
+def samplesJSON():
+    """Handle JSON request/response"""
+    return jsonresponse(samples())
+
+
+@app.route(urlstem + '/samples.csv')
+def samplesCSV():
+    """Convert data to CSV and return response"""
+
+
+    result = samples()
+    if 'error' in result:
+        return jsonresponse(result)
+
+
+    csvfile = StringIO()
+    writer = csv.writer(csvfile)
+
+    # Header
+    writer.writerow(['study_id', 'study_title', 'sample_id', 'sample_name', 'sample_type',
+        'sample_type_confidence', 'mapped_ontology_ids', 'mapped_ontology_terms', 'raw_metaSRA_metadata',])
+
+    # Write a row for each sample
+    for study in result['studies']:
+        for sampleGroup in study['sampleGroups']:
+            for sample in sampleGroup['samples']:
+                writer.writerow([
+                    study['study']['id'],
+                    study['study']['title'],
+                    sample['id'],
+                    sample.get('name', ''),
+                    sampleGroup['type']['type'],
+                    sampleGroup['type']['conf'],
+                    ', '.join([', '.join(term['ids']) for term in sampleGroup['dterms']]),
+                    ', '.join([term['name'] for term in sampleGroup['dterms']]),
+                    '; '.join([': '.join(attr) for attr in sampleGroup['attr']]),
+                ])
+
+    return Response(csvfile.getvalue(), mimetype='text/csv',
+        headers={"Content-disposition": "attachment; filename=metaSRA.csv"})
 
 
 
