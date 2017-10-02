@@ -77,11 +77,23 @@ def samples():
             '_id' : '$study.id',
             'study': {'$first': '$study'},
             'sampleGroups': {'$push': '$$ROOT'},
-            'sampleCount': {'$sum': {'$size': '$samples'}}
+            'sampleCount': {'$sum': {'$size': '$samples'}},
+            'dterms': {'$push': '$dterms'}
         }},
 
-        # Drop '_id'
-        {'$project': {'_id': False}},
+        # Drop '_id',
+        #
+        {'$project': {
+            '_id': False,
+            'study': True,
+            'sampleGroups': True,
+            'sampleCount': True,
+            'dterms': {'$reduce': {
+                'input': '$dterms',
+                'initialValue': [],
+                'in': {'$setUnion': ['$$value', '$$this']}
+            }},
+        }},
 
         {'$facet':{
             'studyCount': [{'$count': 'studyCount'}],
@@ -91,11 +103,41 @@ def samples():
                                 }}],
             'studies':
                 [{'$skip': skip}]
-                + ([{'$limit': limit}] if limit > 0 else [])
+                + ([{'$limit': limit}] if limit > 0 else []),
+
+            # Calculate most-common display terms
+            'terms': [
+                # Narrow down to these two fields so we don't eat unneccesary
+                # memory when we unwind
+                {'$project': {
+                    'dterms': True,
+                    'sampleCount': True
+                }},
+
+                # Group terms, count sample occurrences
+                {'$unwind': '$dterms'},
+                {'$group': {
+                    '_id': '$dterms',
+                    'sampleCount': {'$sum': '$sampleCount'}
+                }},
+
+                # Rearrange document shape and sort
+                {'$project': {
+                    '_id': False,
+                    'dterm': '$_id',
+                    'sampleCount': True,
+                }},
+                {'$sort': OrderedDict([
+                    ('sampleCount', -1),
+                    ('dterm.name', 1)
+                ])}
+
+            ]
         }}
 
     ]).next()
 
+    # Rearrange document shape
     result['studyCount'] = result['studyCount'][0]['studyCount'] if result['studyCount'] else 0
     result['sampleCount'] = result['sampleCount'][0]['sampleCount'] if result['sampleCount'] else 0
 
