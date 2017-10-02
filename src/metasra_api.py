@@ -102,7 +102,10 @@ def samples():
                                 'sampleCount': {'$sum': '$sampleCount'}
                                 }}],
             'studies':
-                [{'$skip': skip}]
+                [
+                    {'$sort': {'sampleCount': -1}},
+                    {'$skip': skip}
+                ]
                 + ([{'$limit': limit}] if limit > 0 else []),
 
             # Calculate most-common display terms
