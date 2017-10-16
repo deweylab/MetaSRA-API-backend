@@ -382,10 +382,15 @@ if DEBUG:
     def rootdir(filename):
         print('foo')
         try:
-            return send_from_directory(os.path.join(debug_frontend_path, 'src'), filename)
+            # First try serving from the 'support pages' directory
+            return send_from_directory(os.path.join(debug_frontend_path, 'supportpages'), filename)
         except:
-            # catch 404 and send index page instead
-            return send_from_directory(os.path.join(debug_frontend_path, 'src'), "index.html")
+            try:
+                # Then try serving from the 'src' directory
+                return send_from_directory(os.path.join(debug_frontend_path, 'src'), filename)
+            except:
+                # catch 404 and send index page instead
+                return send_from_directory(os.path.join(debug_frontend_path, 'src'), "index.html")
 
     # Catch-all URL path to serve the index page (for single-page application)
     @app.route("/", defaults={"path": ""})
