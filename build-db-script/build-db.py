@@ -3,8 +3,8 @@ Builds mongodb database from SQLite files
 """
 
 # TODO: put these config variables somewhere better
-SRA_SUBSET_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra_website/SRAmetadb.subdb.17-06-22.sqlite'
-METASRA_PIPELINE_OUTPUT_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra.sqlite'
+SRA_SUBSET_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/SRAmetadb.subdb.17-09-15.sqlite'
+METASRA_PIPELINE_OUTPUT_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra.v1-2.sqlite'
 
 # Attributes to remove so they don't interfere when samples are grouped by like
 # attributes.  These should be sample-level ID's that don't contain meaningful
@@ -32,6 +32,14 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     'experimental batch',
     'md5_checksum',
 ))
+
+
+# shorten iPS cell line label
+def shorten_sampletype(sampletype):
+    if sampletype == 'induced pluripotent stem cell line':
+        return 'iPS cell line'
+    else:
+        return sampletype
 
 
 # When looking up ancestor terms and descendent terms to display in the autocomplete,
@@ -153,7 +161,8 @@ def lookup_sample_type(sampleID, metaSRAconnection):
         where sample_accession = ?
     """, (sampleID,))
 
-    r = [{'type': t['sample_type'], 'conf': t['confidence']} for t in sampletypes]
+
+    r = [{'type': shorten_sampletype(t['sample_type']), 'conf': t['confidence']} for t in sampletypes]
     return r[0] if len(r) else None
 
 
@@ -556,29 +565,29 @@ def lookup_term_attributes(outdb):
 
 
 if __name__ == '__main__':
-    #outdb = new_output_db()
-    #build_samples(outdb)
+    outdb = new_output_db()
+    build_samples(outdb)
 
 
-    outdb = MongoClient()['metaSRA']
+    #outdb = MongoClient()['metaSRA']
 
-    #group_samples(outdb)
+    group_samples(outdb)
     elaborate_samplegroup_terms(outdb)
 
     # add terms index for sample queries
     print('Creating ancestral terms index on samplegroups collection')
     outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
 
-    #get_distinct_termIDs(outdb)
+    get_distinct_termIDs(outdb)
 
-    #get_term_names(outdb)
-    #lookup_term_attributes(outdb)
+    get_term_names(outdb)
+    lookup_term_attributes(outdb)
 
     # Add token index for term autocomplete queries, and id index for lookup
-    #print('Creating id and token indices on terms collection')
-    #outdb['terms'].create_index('tokens')
-    #outdb['terms'].create_index('ids')
+    print('Creating id and token indices on terms collection')
+    outdb['terms'].create_index('tokens')
+    outdb['terms'].create_index('ids')
 
     print('Dropping intermediate, unused collections')
-    #outdb['samples'].drop()
-    #outdb['termIDs'].drop()
+    outdb['samples'].drop()
+    outdb['termIDs'].drop()

@@ -177,7 +177,7 @@ def samplesCSV():
 
     # Header
     writer.writerow(['study_id', 'study_title', 'sample_id', 'sample_name', 'sample_type',
-        'sample_type_confidence', 'mapped_ontology_ids', 'mapped_ontology_terms', 'raw_metaSRA_metadata',])
+        'sample_type_confidence', 'mapped_ontology_ids', 'mapped_ontology_terms', 'raw_SRA_metadata',])
 
     # Write a row for each sample
     for study in result['studies']:
@@ -238,8 +238,6 @@ def terms():
     comma-separated list of ontology ID's.  Returns records from the 'terms'
     collection, which each actually represent distinct term names accross all
     the included ontologies.
-
-    TODO: enforce a maximum number of terms.
     """
 
 
@@ -254,6 +252,9 @@ def terms():
         except:
             return jsonresponse({'error': 'Limit argument must be an integer.', terms:[]})
 
+
+    if not limit or limit > 500:
+        limit = 500
 
     # Punt if the user didn't enter any parameters.
     if not (q or id):
@@ -313,8 +314,7 @@ def terms():
             {'$sort': OrderedDict([
                 ('namematch', DESCENDING),
                 ('score', ASCENDING)
-            ])}
-
+            ])},
         ]
 
 
@@ -339,8 +339,15 @@ def terms():
         + sortpipeline
         + limitpipeline
 
-        # TODO: add a project stage to prune away some unneccesary fields?
-        # + project
+        + [
+            # Hide extra fields
+            {'$project': {
+                '_id': False,
+                'nametokens': False,
+                'score': False,
+                'tokens': False,
+            }}
+        ]
     )
 
     return jsonresponse({'terms': result})
@@ -383,7 +390,7 @@ if DEBUG:
         print('foo')
         try:
             # First try serving from the 'support pages' directory
-            return send_from_directory(os.path.join(debug_frontend_path, 'supportpages'), filename)
+            return send_from_directory(os.path.join(debug_frontend_path, 'src/supportpages'), filename)
         except:
             try:
                 # Then try serving from the 'src' directory
