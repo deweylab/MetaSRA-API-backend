@@ -31,6 +31,16 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     # 'isolate', ?
     'experimental batch',
     'md5_checksum',
+    'c1capturesite',
+    'c1plateid',
+    'lane',
+    'flowcellid',
+    'libraryid',
+    'sampleID',
+    'siteandparticipantcode',
+    'technical batch',
+    'well number',
+    'patient_code',
 ))
 
 

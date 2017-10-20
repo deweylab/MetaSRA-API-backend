@@ -16,6 +16,7 @@ app = Flask(__name__)
 
 # Establish database connection
 from pymongo import MongoClient, ASCENDING, DESCENDING
+from pymongo.errors import OperationFailure
 db = MongoClient()['metaSRA']
 DEBUG = app.config.get('DEBUG')
 
@@ -63,8 +64,8 @@ def samples():
     if sampletype:
         matchquery['type.type'] = re.sub(r'%20|\+', ' ', sampletype) # we want spaces instead of some other URL encodings
 
-
-    result = db['samplegroups'].aggregate([
+    try:
+      result = db['samplegroups'].aggregate([
 
         # Use the index to find samples matching the terms-query.
         # This has to be the first aggregation stage to utilize the index.
@@ -82,7 +83,6 @@ def samples():
         }},
 
         # Drop '_id',
-        #
         {'$project': {
             '_id': False,
             'study': True,
@@ -138,7 +138,9 @@ def samples():
             ]
         }}
 
-    ]).next()
+      ]).next()
+    except OperationFailure:
+        return {'error': 'Your search matches too many samples and the server exceeded its memory limit.  Please try a more-specific search.'}
 
     # Rearrange document shape
     result['studyCount'] = result['studyCount'][0]['studyCount'] if result['studyCount'] else 0
