@@ -168,11 +168,9 @@ def samplesJSON():
 def samplesCSV():
     """Convert data to CSV and return response"""
 
-
     result = samples()
     if 'error' in result:
         return jsonresponse(result)
-
 
     csvfile = StringIO()
     writer = csv.writer(csvfile)
@@ -198,8 +196,43 @@ def samplesCSV():
                 ])
 
     return Response(csvfile.getvalue(), mimetype='text/csv',
-        headers={"Content-disposition": "attachment; filename=metaSRA.csv"})
+        headers={"Content-disposition": "attachment; filename=metaSRA-samples.csv"})
 
+
+
+@app.route(urlstem + '/experiments.csv')
+def experimentCSV():
+    """
+    CSV file of search results with one run per line.
+    """
+
+    result = samples()
+    if 'error' in result:
+        return jsonresponse(result)
+
+    csvfile = StringIO()
+    writer = csv.writer(csvfile)
+
+    # Header
+    writer.writerow(['sra_study_id', 'study_title', 'sra_sample_id', 'sample_name', 'sra_experiment_id', 'sra_run_id'])
+
+    # Write one row for each run
+    for study in result['studies']:
+        for sampleGroup in study['sampleGroups']:
+            for sample in sampleGroup['samples']:
+                for experiment in sample['experiments']:
+                    for run in experiment['runs']:
+                        writer.writerow([
+                            study['study']['id'],
+                            study['study']['title'],
+                            sample['id'],
+                            sample.get('name', ''),
+                            experiment['id'],
+                            run
+                        ])
+
+    return Response(csvfile.getvalue(), mimetype='text/csv',
+        headers={"Content-disposition": "attachment; filename=metaSRA-experiments.csv"})
 
 
 

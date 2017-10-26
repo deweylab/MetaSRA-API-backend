@@ -135,7 +135,7 @@ def lookup_attributes_and_samplename(sampleID, SRAconnection):
     for (k,v) in cursor:
         if k == 'source_name':
             samplename = v
-        elif k not in ATTRIBUTE_GROUPING_BLACKLIST:
+        elif k.lower() not in ATTRIBUTE_GROUPING_BLACKLIST:
             #attributes.append({'k':k, 'v':'v'})
             attributes.append((k,v))
 
@@ -177,6 +177,44 @@ def lookup_sample_type(sampleID, metaSRAconnection):
 
 
 
+def lookup_experiment_runs(experimentID, SRAconnection):
+    """
+    Return a list of run ID's for a given experiment ID.
+    """
+
+    runIDs = SRAconnection.execute("""
+        SELECT run_accession
+        FROM run
+        WHERE experiment_accession = ?
+    """, (experimentID,))
+
+    return [r['run_accession'] for r in runIDs]
+
+
+
+
+def lookup_sample_experiments(sampleID, SRAconnection):
+    """
+    Given a sample ID, for each associated experiment return the experiment ID
+    and the run ID's associated with the experiment.
+    """
+
+    experimentIDs = SRAconnection.execute("""
+        SELECT experiment_accession
+        FROM experiment
+        WHERE sample_accession = ?
+    """, (sampleID,))
+
+    return [
+        {
+            'id': e['experiment_accession'],
+            'runs': lookup_experiment_runs(e['experiment_accession'], SRAconnection)
+        } for e in experimentIDs
+    ]
+
+
+
+
 
 def build_samples(outdb):
     """
@@ -193,9 +231,14 @@ def build_samples(outdb):
 
 
         # Create indices for faster lookups against individual sample ID's
+        print('Adding SQLite indices')
         SRAconnection.executescript("""
             CREATE INDEX IF NOT EXISTS
                 sample_attr_ind ON sample_attribute(sample_accession);
+            CREATE INDEX IF NOT EXISTS
+                experiment_sample_ind ON experiment(sample_accession, experiment_accession);
+            CREATE INDEX IF NOT EXISTS
+                run_experiment_ind ON run(experiment_accession, run_accession);
         """)
         metaSRAconnection.executescript("""
             CREATE INDEX IF NOT EXISTS
@@ -205,7 +248,7 @@ def build_samples(outdb):
         """)
 
 
-
+        print('Looking up samples - this takes a long time')
         for sample in get_samples():
             attributes, samplename = lookup_attributes_and_samplename(
                 sample['sample_accession'], SRAconnection)
@@ -221,7 +264,8 @@ def build_samples(outdb):
                 },
                 'attr': attributes,
                 'terms': lookup_ontology_terms(sample['sample_accession'], metaSRAconnection),
-                'type': lookup_sample_type(sample['sample_accession'], metaSRAconnection)
+                'type': lookup_sample_type(sample['sample_accession'], metaSRAconnection),
+                'experiments': lookup_sample_experiments(sample['sample_accession'], SRAconnection)
             }
             if samplename:
                 document['name'] = samplename
@@ -249,7 +293,8 @@ def group_samples(outdb):
             },
             'samples': {'$addToSet': {
                 'id': '$id',
-                'name': '$name'
+                'name': '$name',
+                'experiments': '$experiments'
             }},
             'study': {'$first': '$study'}
         }},
@@ -599,5 +644,5 @@ if __name__ == '__main__':
     outdb['terms'].create_index('ids')
 
     print('Dropping intermediate, unused collections')
-    outdb['samples'].drop()
+    #outdb['samples'].drop()
     outdb['termIDs'].drop()
