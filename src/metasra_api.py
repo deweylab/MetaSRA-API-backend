@@ -40,10 +40,13 @@ def samples():
 
     sampletype = request.args.get('sampletype')
 
-    # Return an error if we don't have and_terms, because we don't want to blow
-    # up the server by returning the whole database.
-    if len(and_terms) == 0:
-        return {'error' : 'Please enter some query terms'}
+    # Filter by study or sample ID
+    studyID = request.args.get('study')
+
+    # Return an error if we don't have and_terms or a studyID,
+    # because we don't want to blow up the server by returning the whole database.
+    if len(and_terms) == 0 and not studyID:
+        return {'error' : 'Please enter some query terms in the "and" field, or provide a study ID.'}
 
     # Get skip and limit arguments for paging, and make sure that they are
     # valid integers.
@@ -60,7 +63,12 @@ def samples():
 
 
     # Match parameter to run against MongoDB
-    matchquery = {'aterms': {'$all': and_terms, '$nin': not_terms}}
+    matchquery = {'aterms': {'$nin': not_terms}}
+    if and_terms:
+        matchquery['aterms']['$all'] = and_terms
+    if studyID:
+        matchquery['study.id'] = studyID.upper()
+
     if sampletype:
         matchquery['type.type'] = re.sub(r'%20|\+', ' ', sampletype) # we want spaces instead of some other URL encodings
 

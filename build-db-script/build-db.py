@@ -41,6 +41,7 @@ ATTRIBUTE_GROUPING_BLACKLIST = set((
     'technical batch',
     'well number',
     'patient_code',
+    'patient_identifier',
 ))
 
 
@@ -632,6 +633,7 @@ if __name__ == '__main__':
     # add terms index for sample queries
     print('Creating ancestral terms index on samplegroups collection')
     outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
+    outdb['samplegroups'].create_index('study.id')
 
     get_distinct_termIDs(outdb)
 
