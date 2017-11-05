@@ -273,14 +273,18 @@ def get_tokens(text):
 
 
 
-@app.route(urlstem + '/terms')
-def terms():
+def lookupterms(q_remove_trailing_s=False):
     """
-    Resource for looking up ontology terms.  Can take 2 parameters, 'q' for
-    text-searching (meant for the autocomplete function,) and 'id' which is a
-    comma-separated list of ontology ID's.  Returns records from the 'terms'
-    collection, which each actually represent distinct term names accross all
-    the included ontologies.
+    Looks up ontology terms, returning python object shaped like the JSON to return.
+    Returns records from the 'terms' collection, which represent distinct term names
+    accross all the included ontologies.
+
+    Can take 2 parameters, 'q' for text-searching (meant for the autocomplete
+    function,) and 'id' which is a comma-separated list of ontology ID's.
+
+    If the q_remove_trailing_s flag is true, remove the trailing s/S from all tokens
+    in the search string (to depluralize, since users often type plurals but the
+    ontology terms are mostly singular.)
     """
 
 
@@ -293,7 +297,7 @@ def terms():
         try:
             limit = int(limit)
         except:
-            return jsonresponse({'error': 'Limit argument must be an integer.', terms:[]})
+            return {'error': 'Limit argument must be an integer.', terms:[]}
 
 
     if not limit or limit > 500:
@@ -301,7 +305,7 @@ def terms():
 
     # Punt if the user didn't enter any parameters.
     if not (q or id):
-        return jsonresponse({'error' : 'Please enter some query terms', 'terms':[]})
+        return {'error' : 'Please enter some query terms', 'terms':[]}
 
     # Building components to query against the terms collection in Mongo
     query = {}
@@ -314,6 +318,11 @@ def terms():
         # Restrict terms to those having tokens prefixed by all of the
         # user-entered tokens.  Mongodb can use indexes for regex prefix queries.
         tokens = get_tokens(q)
+
+        # Remove s or S from the end of all tokens if passed the q_remove_trailing_s flag.
+        if q_remove_trailing_s:
+            tokens = [token.rstrip('sS') for token in tokens]
+
         query['$and'] = [{'tokens': {'$regex': '^'+token}} for token in tokens]
 
         # This whole thing is to show first the terms that have the user's query
@@ -393,7 +402,30 @@ def terms():
         ]
     )
 
-    return jsonresponse({'terms': result})
+    return {'terms': list(result)}
+
+
+
+
+@app.route(urlstem + '/terms')
+def terms_json():
+    """
+    API resouce for terms.  Looks up terms and returns a JSON response.
+
+    This funciton is essentially a wrapper around lookupterms().  If lookupterms()
+    returns no results, it tries calling lookupterms() again with a flag to remove
+    trailing s/S characters from query tokens.  This is so a search on "neurons"
+    will match "neuron" also.
+    """
+
+    terms = lookupterms()
+
+    # If there are no terms, try searching again with trailing s/S characters
+    # removed from the tokens of the search string.
+    if 'error' not in terms and not len(terms.get('terms')):
+        terms = lookupterms(q_remove_trailing_s=True)
+
+    return jsonresponse(terms)
 
 
 
