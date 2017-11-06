@@ -245,7 +245,7 @@ def experimentCSV():
 
 
 
-@app.route(urlstem + '/run-ids')
+@app.route(urlstem + '/runs.ids.txt')
 def runIDs():
     """
     API resource returning a list of line-delimited run ID's.
@@ -265,7 +265,7 @@ def runIDs():
                         ids.append(run)
 
     return Response('\n'.join(ids), mimetype='text',
-        headers={"Content-disposition": "attachment; filename=metaSRA-runIDs.txt"})
+        headers={"Content-disposition": "attachment; filename=metaSRA-runs.ids.txt"})
 
 
 
