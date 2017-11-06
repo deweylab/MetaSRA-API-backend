@@ -363,15 +363,20 @@ def elaborate_samplegroup_terms(outdb):
 
 def add_recount_ids(outdb):
     """
+    Iterate through the CSV file with Recount2 study ID's, and add a
+    'study.study.recountId' field to samplegroups that have recount data.
 
+    The first column of the CSV file needs to be a study ID.  (I downloaded
+    this file on the front page of Recount2, the button that says "Download
+    list of studies matching search results" without applying any filters.)
     """
 
-    print('Adding Recount Ids')
+    print('Adding Recount ids to samplegroups')
 
     with open(RECOUNT_STUDIES_CSV_LOCATION) as f:
         for line in csv.reader(f):
             if outdb['samplegroups'].find_one({'study.id': line[0]}):
-                outdb['samplegroups'].update_one(
+                outdb['samplegroups'].update(
                     {'study.id': line[0]},
                     {'$set': {
                         'study.recountId': line[0]
@@ -645,34 +650,34 @@ def lookup_term_attributes(outdb):
 
 
 if __name__ == '__main__':
-    #outdb = new_output_db()
-    #build_samples(outdb)
+    outdb = new_output_db()
+    build_samples(outdb)
 
 
-    outdb = MongoClient()['metaSRA']
+    #outdb = MongoClient()['metaSRA']
 
-    #group_samples(outdb)
-    #elaborate_samplegroup_terms(outdb)
+    group_samples(outdb)
+    elaborate_samplegroup_terms(outdb)
 
     # add terms index for sample queries
-    #print('Creating ancestral terms index on samplegroups collection')
-    #outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
-    #outdb['samplegroups'].create_index('study.id')
+    print('Creating ancestral terms index on samplegroups collection')
+    outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
+    outdb['samplegroups'].create_index('study.id')
 
     add_recount_ids(outdb)
 
 
-    #get_distinct_termIDs(outdb)
+    get_distinct_termIDs(outdb)
 
-    #get_term_names(outdb)
-    #lookup_term_attributes(outdb)
+    get_term_names(outdb)
+    lookup_term_attributes(outdb)
 
     # Add token index for term autocomplete queries, and id index for lookup
-    #print('Creating id and token indices on terms collection')
-    #outdb['terms'].create_index('tokens')
-    #outdb['terms'].create_index('ids')
+    print('Creating id and token indices on terms collection')
+    outdb['terms'].create_index('tokens')
+    outdb['terms'].create_index('ids')
 
 
     print('Dropping intermediate, unused collections')
-    #outdb['samples'].drop()
-    #outdb['termIDs'].drop()
+    outdb['samples'].drop()
+    outdb['termIDs'].drop()
