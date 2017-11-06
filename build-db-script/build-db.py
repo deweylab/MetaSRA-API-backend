@@ -6,6 +6,8 @@ Builds mongodb database from SQLite files
 SRA_SUBSET_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/SRAmetadb.subdb.17-09-15.sqlite'
 METASRA_PIPELINE_OUTPUT_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra.v1-2.sqlite'
 
+RECOUNT_STUDIES_CSV_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/recount_selection_2017-11-06 03_32_29.csv'
+
 # Attributes to remove so they don't interfere when samples are grouped by like
 # attributes.  These should be sample-level ID's that don't contain meaningful
 # information.  (Sometimes tricky because different studies use these labels
@@ -72,6 +74,7 @@ def ontology_precedence(term_id):
 from pymongo import MongoClient, ASCENDING
 import sqlite3
 import re
+import csv
 
 
 from onto_lib import load_ontology, ontology_graph, general_ontology_tools
@@ -358,6 +361,27 @@ def elaborate_samplegroup_terms(outdb):
 
 
 
+def add_recount_ids(outdb):
+    """
+
+    """
+
+    print('Adding Recount Ids')
+
+    with open(RECOUNT_STUDIES_CSV_LOCATION) as f:
+        for line in csv.reader(f):
+            if outdb['samplegroups'].find_one({'study.id': line[0]}):
+                outdb['samplegroups'].update_one(
+                    {'study.id': line[0]},
+                    {'$set': {
+                        'study.recountId': line[0]
+                    }}
+                )
+
+
+
+
+
 def get_distinct_termIDs(outdb):
     """
     Create a new collection 'terms' with one document for every distinct term
@@ -621,30 +645,34 @@ def lookup_term_attributes(outdb):
 
 
 if __name__ == '__main__':
-    outdb = new_output_db()
-    build_samples(outdb)
+    #outdb = new_output_db()
+    #build_samples(outdb)
 
 
-    #outdb = MongoClient()['metaSRA']
+    outdb = MongoClient()['metaSRA']
 
-    group_samples(outdb)
-    elaborate_samplegroup_terms(outdb)
+    #group_samples(outdb)
+    #elaborate_samplegroup_terms(outdb)
 
     # add terms index for sample queries
-    print('Creating ancestral terms index on samplegroups collection')
-    outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
-    outdb['samplegroups'].create_index('study.id')
+    #print('Creating ancestral terms index on samplegroups collection')
+    #outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
+    #outdb['samplegroups'].create_index('study.id')
 
-    get_distinct_termIDs(outdb)
+    add_recount_ids(outdb)
 
-    get_term_names(outdb)
-    lookup_term_attributes(outdb)
+
+    #get_distinct_termIDs(outdb)
+
+    #get_term_names(outdb)
+    #lookup_term_attributes(outdb)
 
     # Add token index for term autocomplete queries, and id index for lookup
-    print('Creating id and token indices on terms collection')
-    outdb['terms'].create_index('tokens')
-    outdb['terms'].create_index('ids')
+    #print('Creating id and token indices on terms collection')
+    #outdb['terms'].create_index('tokens')
+    #outdb['terms'].create_index('ids')
+
 
     print('Dropping intermediate, unused collections')
     #outdb['samples'].drop()
-    outdb['termIDs'].drop()
+    #outdb['termIDs'].drop()
