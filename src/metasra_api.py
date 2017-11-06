@@ -208,7 +208,7 @@ def samplesCSV():
 
 
 
-@app.route(urlstem + '/experiments.csv')
+@app.route(urlstem + '/runs.csv')
 def experimentCSV():
     """
     CSV file of search results with one run per line.
@@ -240,7 +240,32 @@ def experimentCSV():
                         ])
 
     return Response(csvfile.getvalue(), mimetype='text/csv',
-        headers={"Content-disposition": "attachment; filename=metaSRA-experiments.csv"})
+        headers={"Content-disposition": "attachment; filename=metaSRA-runs.csv"})
+
+
+
+
+@app.route(urlstem + '/run-ids')
+def runIDs():
+    """
+    API resource returning a list of line-delimited run ID's.
+    """
+
+    result = samples()
+    if 'error' in result:
+        return jsonresponse(result)
+
+    ids = []
+
+    for study in result['studies']:
+        for sampleGroup in study['sampleGroups']:
+            for sample in sampleGroup['samples']:
+                for experiment in sample['experiments']:
+                    for run in experiment['runs']:
+                        ids.append(run)
+
+    return Response('\n'.join(ids), mimetype='text',
+        headers={"Content-disposition": "attachment; filename=metaSRA-runIDs.txt"})
 
 
 
