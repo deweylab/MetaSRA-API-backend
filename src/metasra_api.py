@@ -1,4 +1,17 @@
 
+"""
+This file is a Flask app for the MetaSRA API/back-end.  It has two main resources:
+samples and terms, and a variety of end-points for accessing these resources.
+
+To run it For development, use the following shell commands after having
+installed all dependencies:
+$ export FLASK_DEBUG=1
+$ export FLASK_APP=metasra_api.py
+$ flask run
+
+To delopy, you should use UWSGI.
+"""
+
 # Path to the front-end repository in debug-mode/development.  (This isn't used in deployment.)
 import os.path
 debug_frontend_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', 'metasra-frontend')
@@ -32,6 +45,9 @@ def samples():
 
     Return a python dict that looks like the JSON object to return.  (Functions
     below handle the request/response, and converting to CSV.)
+
+    This function itself is not mapped to a URL, but it's called by functions
+    which are mapped to URL's.
     """
 
 
@@ -310,6 +326,9 @@ def lookupterms(q_remove_trailing_s=False):
     If the q_remove_trailing_s flag is true, remove the trailing s/S from all tokens
     in the search string (to depluralize, since users often type plurals but the
     ontology terms are mostly singular.)
+
+    This function itself is not mapped to a URL, but it is called by functions
+    which are mapped to URL's.
     """
 
 

@@ -5,5 +5,5 @@ python3 -m venv .ENV
 
 
 echo "Installing packages"
-source .ENV/bin/activate
+source ENV/bin/activate
 pip install -r requirements.txt

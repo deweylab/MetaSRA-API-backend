@@ -1,11 +1,33 @@
 """
-Builds mongodb database from SQLite files
+Builds MetaSRA mongodb database from SQLite files.  See the bottom of this file
+for a description of pipeline steps.
+
+INPUT (See config variables below):
++ MetaSRA database : SQLite file : MetaSRA pipeline output
++ SRA metadata subset DB : SQLite file : a byproduct of the MetaSRA pipeline
++ Recount2 ID list : CSV file : To get this file, go to the Recount2 website and
+        click "Download list of studies matching search results" without applying
+        any filters.
+
+OUTPUT:
++ Creates a new Mongo database called "metaSRA", with these collections: "terms" and "samplegroups".
++ If there is already a database called "metaSRA", it is renamed to "metaSRA_old".
++ Connects to a Mongo database on localhost using the default port.  If you need
+        to change the connection, see the new_output_db() function.
+
+REQUIRES:
++ python 3.x
++ onto_lib for python3, and OBO files required by onto_lib
++ python packages from requirements.txt
 """
 
-# TODO: put these config variables somewhere better
+
+# CONFIG #######################################################################
+
+
+# TODO: put these config variables somewhere better (command-line arguments?)
 SRA_SUBSET_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/SRAmetadb.subdb.17-09-15.sqlite'
 METASRA_PIPELINE_OUTPUT_SQLITE_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/metasra.v1-2.sqlite'
-
 RECOUNT_STUDIES_CSV_LOCATION = '/home/matt/projects/MetaSRA/mb-database-code/recount_selection_2017-11-06 03_32_29.csv'
 
 # Attributes to remove so they don't interfere when samples are grouped by like
@@ -77,6 +99,7 @@ import re
 import csv
 
 
+# Import ontolib
 from onto_lib import load_ontology, ontology_graph, general_ontology_tools
 ONT_NAME_TO_ONT_ID = {"EFO_CL_DOID_UBERON_CVCL":"17"}
 ONT_ID_TO_OG = {x:load_ontology.load(x)[0] for x in ONT_NAME_TO_ONT_ID.values()}
@@ -89,7 +112,8 @@ def new_output_db():
     one to 'mongo_old'
     """
 
-    # Connection uses localhost and default port, change here if need be
+    # Connection uses localhost and default port, change here if you need to
+    # connect to something else.
     client = MongoClient()
 
     # TODO: use database version numbers instead of _old?
@@ -540,20 +564,6 @@ def lookup_related_terms(term_ids, direction, outdb):
     lookup_function = (general_ontology_tools.get_ancestors_within_radius if
         direction == ANCESTORS else general_ontology_tools.get_descendents_within_radius)
 
-    """
-    # Look up terms at radius 1
-    related_term_ids = set()
-    for term_id in term_ids:
-        related_term_ids.update(lookup_function(term_id, 1))
-    related_term_names = distinct_terms_from_term_ids(related_term_ids)
-
-    # If we're below the threshold (not enough terms), look up terms from radius 2
-    if len(related_term_names) < RELATED_TERM_EXPANSION_THRESHOLD:
-        for term_id in term_ids:
-            related_term_ids.update(lookup_function(term_id, 2))
-        related_term_names = distinct_terms_from_term_ids(related_term_ids)
-    """
-
     # Look up terms at radius 2
     related_term_ids = set()
     for term_id in term_ids:
@@ -649,27 +659,59 @@ def lookup_term_attributes(outdb):
 
 
 
-if __name__ == '__main__':
+
+def build_database():
+    """
+    Calls all the steps in-order to build the mongoDB database.
+    """
+
+
+    # CONNECTION SETUP #########################################################
+
+    # Rename the existing metaSRA db to metaSRA_old, and return a blank db called metaSRA
     outdb = new_output_db()
+
+    # If you want to only run a part of the build-db pipeline and don't want to start a
+    # new database, you can comment out new_output_db() and uncomment this line.
+    # outdb = MongoClient()['metaSRA']
+
+
+
+
+    # SAMPLE GROUPS COLLECTION  ################################################
+
+    # Copy the SQLite files with samples into Mongodb (this step takes a long time.)
     build_samples(outdb)
 
-
-    #outdb = MongoClient()['metaSRA']
-
+    # Create a new 'samplegroups' collection by grouping samples via Mongodb.
     group_samples(outdb)
+
+    # Use ontolib to find 1) the most specific terms (to display) and 2) all ancestral
+    # terms for each sample group.
     elaborate_samplegroup_terms(outdb)
 
-    # add terms index for sample queries
+    # Add terms index for sample queries
     print('Creating ancestral terms index on samplegroups collection')
     outdb['samplegroups'].create_index([('aterms', ASCENDING), ('type.type', ASCENDING)])
     outdb['samplegroups'].create_index('study.id')
 
+    # From a CSV with studies from Recount2, add a field to all samplegroups in
+    # our database where the study is in Recount2.
     add_recount_ids(outdb)
 
 
+
+
+    # TERMS COLLECTION #########################################################
+
+    # Create a collection with all the distinct term ID's assigned to at least one sample.
     get_distinct_termIDs(outdb)
 
+    # Use Ontolib to look up names for all of our term ID's, and group term ID's having the
+    # same name.
     get_term_names(outdb)
+
+    # For each term, look up synonyms, ancestors, and descendents.
     lookup_term_attributes(outdb)
 
     # Add token index for term autocomplete queries, and id index for lookup
@@ -678,6 +720,14 @@ if __name__ == '__main__':
     outdb['terms'].create_index('ids')
 
 
+
+
     print('Dropping intermediate, unused collections')
     outdb['samples'].drop()
     outdb['termIDs'].drop()
+
+
+
+
+if __name__ == '__main__':
+    build_database()
