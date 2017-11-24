@@ -75,7 +75,17 @@ The development server is also set up to serve static files from the front-end. 
 
 ## Update back-end on web server
 
-**TO DO***
+Once you've pushed updates to this git repository, here's how to update the back-end on the server.  You have to 1) pull the changes from the github repository and 2) restart the UWSGI process that runs the Python app.  SSH into the web server, then:
+
+```bash
+cd /var/www/metasra-backend
+git pull
+cd ..
+source ENV/bin/activate
+ENV/bin/uwsgi --reload server_pid_file.pid --ini /var/www/uwsgi-conf.ini
+```
+
+Sometimes UWSGI doesn't start for some reason, so if the website isn't working and you don't see uwsgi in the process list when you do `ps aux`, try starting UWSGI again with `ENV/bin/uwsgi --ini /var/www/uwsgi-conf.ini`.
 
 
 
@@ -83,4 +93,87 @@ The development server is also set up to serve static files from the front-end. 
 
 These instructions are for completely rebuilding the web server from scratch.
 
-**TO DO**
+Install and configure NGINX, Python 3, and Mongo > 3.4.  Follow the instructions above to set up the Mongo database, running on localhost using the default connection parameters (or change them in metasra_api.py.)
+
+
+#### Copy files
+Put all of this in /var/www: (or maybe a different directory depending on your system, but this document will refer to /var/www.)
++ metasra-backend : a clone of this repository
++ metasra-frontend : a clone of the front-end respository
++ static : a folder containing static files for the web application that are excluded from the front-end git repository.  As of November 2017, it looks like this:
+```
+$ ls static
+congruent_pentagon.png  footer_lodyas.png  metasra.v1.0.sqlite  metasra_versions      term_ancestors.sqlite  v1.1
+email.js                metasra.sqlite     metasra.v1.1.sqlite  publication_datasets  term_names.sqlite
+```
++ uwsgi-conf.ini : text file with these contents:
+```
+[uwsgi]
+socket = 127.0.0.1:9001
+wsgi-file = /var/www/metasra-backend/src/metasra_api.py
+pidfile = /var/www/server_pid_file.pid
+daemonize = /var/www/uwsgi.log
+virtualenv = /var/www/ENV
+callable = app
+```
+
+#### Install dependencies
+Create a new virtual environment, and within it install the dependencies listed in requirements.txt as well as UWSGI.
+
+To install UWSGI from a Python package, the python header/development files must be installed on the system.  (Look for a system package called python3-dev or something similar?)
+
+```bash
+cd /var/www
+python3 -m venv ENV
+source ENV/bin/activate
+pip install -r requirements.txt
+pip install uwsgi
+```
+
+
+#### Configure NGINX routes
+Add this to your /etc/nginx/nginx.conf (This file might be in a different location depending on your system.)
+
+```
+server {
+  server_name  metasra.biostat.wisc.edu;
+
+  # Load configuration files for the default server block.
+  include /etc/nginx/default.d/*.conf;
+
+  listen       80;
+
+
+  location /api/v01 {
+     include   uwsgi_params;
+     uwsgi_pass  127.0.0.1:9001;
+  }
+
+  location /node_modules/ {
+     alias /var/www/metasra-frontend/node_modules/;
+  }
+
+  location / {
+     alias /var/www/metasra-frontend/src/;
+     try_files /supportpages/$uri $uri $uri/ /index.html;
+  }
+
+  location /static/ {
+      root /var/www;
+      if (-f $request_filename) {
+         rewrite ^/static/(.*)$  /static/$1 break;
+      }
+  }
+}     
+```
+
+
+#### Start UWSGI
+
+This will start WSGI, to serve the back-end.  You should set up the server to do this automatically on startup.
+
+```
+cd /var/www
+source ENV/bin/activate
+ENV/bin/uwsgi --ini /var/www/uwsgi-conf.ini
+```
