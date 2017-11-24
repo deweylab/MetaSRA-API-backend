@@ -74,7 +74,6 @@ The development server is also set up to serve static files from the front-end. 
 
 
 ## Update back-end on web server
-
 Once you've pushed updates to this git repository, here's how to update the back-end on the server.  You have to 1) pull the changes from the github repository and 2) restart the UWSGI process that runs the Python app.  SSH into the web server, then:
 
 ```bash
@@ -90,7 +89,6 @@ Sometimes UWSGI doesn't start for some reason, so if the website isn't working a
 
 
 ## Rebuild the web server
-
 These instructions are for completely rebuilding the web server from scratch.
 
 Install and configure NGINX, Python 3, and Mongo > 3.4.  Follow the instructions above to set up the Mongo database, running on localhost using the default connection parameters (or change them in metasra_api.py.)
@@ -106,8 +104,9 @@ $ ls static
 congruent_pentagon.png  footer_lodyas.png  metasra.v1.0.sqlite  metasra_versions      term_ancestors.sqlite  v1.1
 email.js                metasra.sqlite     metasra.v1.1.sqlite  publication_datasets  term_names.sqlite
 ```
+
 + uwsgi-conf.ini : text file with these contents:
-```
+```ini
 [uwsgi]
 socket = 127.0.0.1:9001
 wsgi-file = /var/www/metasra-backend/src/metasra_api.py
@@ -116,6 +115,7 @@ daemonize = /var/www/uwsgi.log
 virtualenv = /var/www/ENV
 callable = app
 ```
+
 
 #### Install dependencies
 Create a new virtual environment, and within it install the dependencies listed in requirements.txt as well as UWSGI.
@@ -134,7 +134,7 @@ pip install uwsgi
 #### Configure NGINX routes
 Add this to your /etc/nginx/nginx.conf (This file might be in a different location depending on your system.)
 
-```
+```nginx
 server {
   server_name  metasra.biostat.wisc.edu;
 
@@ -169,11 +169,14 @@ server {
 
 
 #### Start UWSGI
-
 This will start WSGI, to serve the back-end.  You should set up the server to do this automatically on startup.
 
-```
+```bash
 cd /var/www
 source ENV/bin/activate
 ENV/bin/uwsgi --ini /var/www/uwsgi-conf.ini
 ```
+
+
+#### Compile front-end
+See README in front-end repository.
